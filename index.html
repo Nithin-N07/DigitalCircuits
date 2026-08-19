@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Digital Logic Synthesizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>Advanced Digital Logic Synthesizer</h1>
+            <p>Minimize expressions, generate truth tables, handle "Don't Cares", and synthesize Universal Logic Circuits (NAND/NOR).</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card input-section">
+            <div class="tabs">
+                <button class="tab active" data-target="tab-expr">Expression</button>
+                <button class="tab" data-target="tab-minmax">Min/Max Terms</button>
+                <button class="tab" data-target="tab-tt">Truth Table</button>
+                <button class="tab" data-target="tab-arithmetic">Arithmetic Circuits</button>
+            </div>
+
+            <!-- TAB 1: Boolean Expression -->
+            <div class="tab-content active" id="tab-expr">
+                <label>Boolean Expression (Use &, |, ~, ^ for AND, OR, NOT, XOR):</label>
+                <input type="text" id="inputExpr" placeholder="e.g. A & B | ~C">
+                <small>Optional: Define "Don't Care" conditions as a separate boolean expression.</small>
+                <label>Don't Care Expression (Optional):</label>
+                <input type="text" id="inputExprDC" placeholder="e.g. A & ~B">
+                <button id="btnSynthesizeExpr" class="primary-btn synthesize-btn">Synthesize Circuit</button>
+            </div>
+
+            <!-- TAB 2: Minterms / Maxterms -->
+            <div class="tab-content" id="tab-minmax">
+                <label>Variables (comma separated):</label>
+                <input type="text" id="inputVarsMin" placeholder="e.g. A, B, C">
+                
+                <div class="radio-group">
+                    <label><input type="radio" name="termType" value="minterms" checked> Minterms (Σm)</label>
+                    <label><input type="radio" name="termType" value="maxterms"> Maxterms (ΠM)</label>
+                </div>
+
+                <label id="lblTerms">Minterms (comma separated integers):</label>
+                <input type="text" id="inputTerms" placeholder="e.g. 0, 1, 4, 5">
+                
+                <label>Don't Cares (comma separated integers):</label>
+                <input type="text" id="inputDontCares" placeholder="e.g. 2, 7">
+                <button id="btnSynthesizeMinMax" class="primary-btn synthesize-btn">Synthesize Circuit</button>
+            </div>
+
+            <!-- TAB 3: Truth Table -->
+            <div class="tab-content" id="tab-tt">
+                <label>Variables (comma separated):</label>
+                <input type="text" id="inputVarsTT" placeholder="e.g. A, B, C, D">
+                <button id="btnGenerateTTInputs" class="secondary-btn">Generate Table Input</button>
+                <div id="ttInputContainer"></div>
+                <button id="btnSynthesizeTT" class="primary-btn synthesize-btn" style="display:none; margin-top:1rem;">Synthesize Circuit</button>
+            </div>
+
+            <!-- TAB 4: Arithmetic Circuits -->
+            <div class="tab-content" id="tab-arithmetic">
+                <label>Select Pre-Defined Arithmetic Circuit:</label>
+                <select id="selectArithmetic" class="styled-select">
+                    <option value="ha">Half Adder</option>
+                    <option value="fa">Full Adder</option>
+                    <option value="hs">Half Subtractor</option>
+                    <option value="fs">Full Subtractor</option>
+                    <option value="mult2">2x2 Multiplier</option>
+                </select>
+                <button id="btnSynthesizeArithmetic" class="primary-btn synthesize-btn" style="margin-top: 1rem;">Generate Arithmetic Circuit</button>
+            </div>
+
+            <div id="errorMsg" class="error"></div>
+        </section>
+
+        <!-- OUTPUT SECTION (Dynamically Populated) -->
+        <section id="outputs" style="display: none;"></section>
+
+    </main>
+
+    <button id="scrollTopBtn" title="Go to top">↑</button>
+
+    <footer>
+        <div class="container">
+            <p>Runs 100% client-side. Optimized Quine-McCluskey Engine with Don't Care Integration.</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
