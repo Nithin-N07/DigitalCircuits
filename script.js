@@ -1,26 +1,18 @@
-console.log("Advanced Logic Synthesizer Engine V5: Loaded");
+console.log("Digital Logic Gate Implementation");
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. UI Setup: Tabs
+    // Tab switching logic
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
             e.target.classList.add('active');
             document.getElementById(e.target.dataset.target).classList.add('active');
-            document.getElementById('outputs').style.display = 'none';
         });
     });
 
-    // Min/Max Radio Toggle UX
-    document.querySelectorAll('input[name="termType"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            document.getElementById('lblTerms').innerText = 
-                e.target.value === 'minterms' ? 'Minterms (comma separated integers):' : 'Maxterms (comma separated integers):';
-        });
-    });
-
-    // Truth Table Generator
+    // Truth Table Input Generator
     document.getElementById('btnGenerateTTInputs').addEventListener('click', () => {
         const varsStr = document.getElementById('inputVarsTT').value;
         const vars = [...new Set(varsStr.toUpperCase().match(/[A-Z]/g) || [])].sort();
@@ -29,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        let html = '<div class="tt-container"><table><thead><tr>';
+        let html = '<table><thead><tr>';
         vars.forEach(v => html += `<th>${v}</th>`);
         html += '<th>Output</th></tr></thead><tbody>';
         
@@ -40,118 +32,79 @@ document.addEventListener('DOMContentLoaded', () => {
                 let val = (i & (1 << (vars.length - 1 - j))) ? 1 : 0;
                 html += `<td>${val}</td>`;
             }
-            html += `<td><select id="tt-out-${i}">
-                <option value="0">0</option>
-                <option value="1">1</option>
-                <option value="X">X</option>
-            </select></td></tr>`;
+            // Includes the Don't Care ('X') option
+            html += `<td><select id="tt-out-${i}"><option value="0">0</option><option value="1">1</option><option value="X">X</option></select></td></tr>`;
         }
-        html += '</tbody></table></div>';
-        
-        const container = document.getElementById('ttInputContainer');
-        container.innerHTML = html;
-        container.dataset.vars = vars.join(',');
-        document.getElementById('btnSynthesizeTT').style.display = 'block';
+        html += '</tbody></table>';
+        document.getElementById('ttInputContainer').innerHTML = html;
+        document.getElementById('ttInputContainer').dataset.vars = vars.join(',');
     });
 
-    // 2. Synthesize Action Bindings
-    document.querySelectorAll('.synthesize-btn').forEach(btn => {
-        btn.addEventListener('click', processInput);
-    });
-
-    // 3. Scroll to Top Behavior
-    const scrollTopBtn = document.getElementById("scrollTopBtn");
-    window.onscroll = () => { scrollTopBtn.style.display = window.scrollY > 300 ? "block" : "none"; };
-    scrollTopBtn.onclick = () => { window.scrollTo({top: 0, behavior: 'smooth'}); };
+    // Main Synthesize Button
+    document.getElementById('btnSynthesize').addEventListener('click', processInput);
 });
 
-
-// ==========================================
-// CORE PIPELINE: INPUT PARSING
-// ==========================================
 function processInput() {
     const errorMsg = document.getElementById('errorMsg');
     const outputs = document.getElementById('outputs');
     errorMsg.innerText = '';
-    outputs.innerHTML = '';
     outputs.style.display = 'none';
 
     try {
         const activeTab = document.querySelector('.tab.active').dataset.target;
-        let synthesisQueue = []; // Supports multi-output (e.g. Adders)
+        let vars = [];
+        let tt = [];
 
         if (activeTab === 'tab-expr') {
             const expr = document.getElementById('inputExpr').value;
-            const exprDC = document.getElementById('inputExprDC').value;
             if(!expr.trim()) throw new Error("Expression cannot be empty.");
             
-            let allVars = (expr + " " + exprDC).toUpperCase().match(/[A-Z]/g) || [];
-            const vars = [...new Set(allVars)].sort();
+            // Clean out logic words before extracting variables so words like "AND" aren't parsed as A, N, D
+            let cleanExpr = expr.toUpperCase().replace(/(AND|OR|NOT|NAND|NOR|XOR|XNOR)/g, '');
+            vars = [...new Set(cleanExpr.match(/[A-Z]/g) || [])].sort();
+            
             if(vars.length > 6) throw new Error("Maximum 6 variables supported.");
             if(vars.length === 0) throw new Error("No valid variables found.");
             
-            let tt = [];
             const rows = Math.pow(2, vars.length);
             for (let i = 0; i < rows; i++) {
                 let inputVals = {};
                 for (let j = 0; j < vars.length; j++) {
                     inputVals[vars[j]] = (i & (1 << (vars.length - 1 - j))) ? 1 : 0;
                 }
-                
-                let isDC = exprDC.trim() ? evaluateExpression(exprDC, inputVals) : 0;
-                if (isDC) {
-                    tt.push('X');
-                } else {
-                    tt.push(evaluateExpression(expr, inputVals));
-                }
+                tt.push(evaluateExpression(expr, inputVals));
             }
-            synthesisQueue.push({ name: 'Boolean Function', vars: vars, tt: tt });
         } 
-        else if (activeTab === 'tab-minmax') {
+        else if (activeTab === 'tab-minterms') {
             const varsStr = document.getElementById('inputVarsMin').value;
-            const vars = [...new Set(varsStr.toUpperCase().match(/[A-Z]/g) || [])].sort();
+            vars = [...new Set(varsStr.toUpperCase().match(/[A-Z]/g) || [])].sort();
             if(vars.length === 0 || vars.length > 6) throw new Error("Enter 1-6 valid variables.");
             
-            const isMinterm = document.querySelector('input[name="termType"]:checked').value === 'minterms';
-            const terms = document.getElementById('inputTerms').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
-            const dontCares = document.getElementById('inputDontCares').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+            const minterms = document.getElementById('inputMinterms').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
             
-            let tt = [];
+            // Parse Don't Cares
+            const dontCaresStr = document.getElementById('inputDontCares') ? document.getElementById('inputDontCares').value : '';
+            const dontCares = dontCaresStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+            
             const rows = Math.pow(2, vars.length);
             for (let i = 0; i < rows; i++) {
-                if (dontCares.includes(i)) tt.push('X');
-                else if (terms.includes(i)) tt.push(isMinterm ? 1 : 0);
-                else tt.push(isMinterm ? 0 : 1);
+                if (minterms.includes(i)) tt.push(1);
+                else if (dontCares.includes(i)) tt.push('X');
+                else tt.push(0);
             }
-            synthesisQueue.push({ name: 'Boolean Function', vars: vars, tt: tt });
         }
         else if (activeTab === 'tab-tt') {
             const container = document.getElementById('ttInputContainer');
-            if(!container.dataset.vars) throw new Error("Generate Truth Table first.");
-            const vars = container.dataset.vars.split(',');
-            let tt = [];
+            if(!container.dataset.vars) throw new Error("Generate the Truth Table inputs first.");
+            vars = container.dataset.vars.split(',');
             const rows = Math.pow(2, vars.length);
             for (let i = 0; i < rows; i++) {
                 let val = document.getElementById(`tt-out-${i}`).value;
                 tt.push(val === 'X' ? 'X' : parseInt(val));
             }
-            synthesisQueue.push({ name: 'Boolean Function', vars: vars, tt: tt });
-        }
-        else if (activeTab === 'tab-arithmetic') {
-            const type = document.getElementById('selectArithmetic').value;
-            synthesisQueue = getArithmeticConfig(type);
-            outputs.appendChild(renderBlockDiagram(type));
         }
 
-        // Process all gathered functions in the queue
-        synthesisQueue.forEach(job => {
-            const section = document.createElement('div');
-            section.className = 'multi-output-section';
-            section.innerHTML = `<h2 class="output-header">Synthesizing: ${job.name}</h2>`;
-            section.innerHTML += runSynthesis(job.vars, job.tt);
-            outputs.appendChild(section);
-        });
-
+        runSynthesis(vars, tt);
         outputs.style.display = 'block';
 
     } catch (e) {
@@ -159,40 +112,57 @@ function processInput() {
     }
 }
 
-// Evaluator capable of handling NOT(~,!), AND(&,*), OR(|,+), XOR(^)
+// ------------------------------------------------------------------
+// Core Logic & Evaluation (Robust parser for implicit logic)
+// ------------------------------------------------------------------
+
 function evaluateExpression(expr, inputs) {
-    let norm = expr.toUpperCase().replace(/\s+/g, '')
-                   .replace(/AND/g, '&').replace(/OR/g, '|').replace(/NOT/g, '~').replace(/XOR/g, '^')
-                   .replace(/\*/g, '&').replace(/\+/g, '|').replace(/!/g, '~');
+    let norm = expr.toUpperCase();
     
-    // Implicit ANDs (e.g. AB -> A&B, A(B) -> A&(B))
+    // Convert text operators to symbols first
+    norm = norm.replace(/XOR/g, '^')
+               .replace(/AND/g, '&')
+               .replace(/OR/g, '|')
+               .replace(/NOT/g, '~');
+    
+    // Remove spaces and map alternate symbols
+    norm = norm.replace(/\s+/g, '')
+               .replace(/\*/g, '&')
+               .replace(/\+/g, '|')
+               .replace(/!/g, '~');
+
+    // Convert postfix NOT (e.g., A') to prefix (~A)
+    norm = norm.replace(/([A-Z])'/g, '~$1');
+
+    // Inject implicit ANDs between adjacent variables/parentheses (e.g. AB -> A&B)
     norm = norm.replace(/([A-Z\)])(?=[A-Z\(~])/g, '$1&');
-    
+
+    // Replace variables with their binary values
     Object.keys(inputs).forEach(v => {
-        norm = norm.replace(new RegExp(v, 'g'), inputs[v]);
+        let regex = new RegExp(v, 'g');
+        norm = norm.replace(regex, inputs[v]);
     });
-    
-    // Convert to JS: ^ to !==, & to &&, | to ||
+
+    // Convert boolean logic operators to JS evaluation operators
     let jsExpr = norm.replace(/&/g, '&&').replace(/\|/g, '||').replace(/~/g, '!');
     
-    // Handle XOR strictly manually by replacing A ^ B with A !== B
-    // Simple RegEx won't fix nested XOR properly in JS without AST, but for binary strings:
-    jsExpr = jsExpr.replace(/([01!&|()]+)\^([01!&|()]+)/g, '!!($1) !== !!($2)'); 
-
     try {
-        return (new Function(`return !!(${jsExpr});`))() ? 1 : 0;
+        const fn = new Function(`return !!(${jsExpr});`);
+        return fn() ? 1 : 0;
     } catch(e) {
-        throw new Error(`Invalid Boolean Expression context: ${expr}`);
+        throw new Error("Invalid Boolean Expression. Please check your syntax.");
     }
 }
 
+// ------------------------------------------------------------------
+// Quine-McCluskey Minimization (Supporting Don't Cares)
+// ------------------------------------------------------------------
 
-// ==========================================
-// QUINE-MCCLUSKEY ALGORITHM (WITH DON'T CARES)
-// ==========================================
-function quineMcCluskey(targets, dontCares, numVars) {
-    if (targets.length === 0) return [];
-    let allTerms = [...new Set([...targets, ...dontCares])];
+function quineMcCluskey(minterms, dontCares, numVars) {
+    if (minterms.length === 0) return [];
+    
+    // Merge minterms and don't cares to find larger groupings
+    let allTerms = [...new Set([...minterms, ...dontCares])];
     if (allTerms.length === Math.pow(2, numVars)) return ['1'];
 
     let groups = Array.from({length: numVars + 1}, () => []);
@@ -241,11 +211,11 @@ function quineMcCluskey(targets, dontCares, numVars) {
         groups = nextGroups;
     }
 
-    // Uncovered targets (Ignore Don't Cares for coverage)
-    let uncovered = new Set(targets);
+    // Uncovered set ONLY includes actual minterms (we don't strictly care about covering 'X's)
+    let uncovered = new Set(minterms); 
     let essential = [];
 
-    targets.forEach(m => {
+    minterms.forEach(m => {
         let covers = primeImplicants.filter(pi => pi.minterms.includes(m));
         if (covers.length === 1) {
             let epi = covers[0];
@@ -267,13 +237,13 @@ function quineMcCluskey(targets, dontCares, numVars) {
         solution.push(bestPI);
         bestPI.minterms.forEach(m => uncovered.delete(m));
     }
-    
     return solution.map(pi => pi.bits);
 }
 
-// ==========================================
-// SYNTHESIS PIPELINE & AST
-// ==========================================
+// ------------------------------------------------------------------
+// Synthesis Pipeline
+// ------------------------------------------------------------------
+
 function runSynthesis(vars, tt) {
     const minterms1 = tt.map((v, i) => v === 1 ? i : -1).filter(i => i !== -1);
     const minterms0 = tt.map((v, i) => v === 0 ? i : -1).filter(i => i !== -1);
@@ -285,56 +255,34 @@ function runSynthesis(vars, tt) {
     const sopTerms = qmSOP.map(bits => bitsToLiterals(bits, vars, true));
     const posTerms = qmPOS.map(bits => bitsToLiterals(bits, vars, false));
 
-    const sopEq = formatEquation(sopTerms, false);
-    const posEq = formatEquation(posTerms, true);
+    document.getElementById('outSOP').innerText = formatEquation(sopTerms, false);
+    document.getElementById('outPOS').innerText = formatEquation(posTerms, true);
     
-    const ttHtml = generateTruthTableHTML(vars, tt);
+    renderTruthTable(vars, tt);
 
     // Build Strict 2-Input ASTs
     const astStandard = buildStandardAST(sopTerms);
     const astStandardPOS = buildPOSStandardAST(posTerms);
     
-    // Universal gates conversion
+    // Convert logic to universal gates
     const astNAND = convertToNAND(astStandard);
     const astNOR = convertToNOR(astStandardPOS);
 
-    // Verification (Ignores X)
+    // Verify Outputs
     const verified = verifyASTs(vars, tt, astStandard, astNAND, astNOR);
-    const veriClass = verified ? 'success' : 'fail';
-    const veriText = verified ? '✓ Verification Passed: Simplified, NAND-only, and NOR-only circuits all perfectly match the original truth table.' 
-                              : '✗ Verification Failed: Circuit outputs mismatch.';
+    const msgBox = document.getElementById('verificationMsg');
+    if (verified) {
+        msgBox.className = 'verification success';
+        msgBox.innerText = '✓ Verification Passed: Simplified, NAND-only, and NOR-only circuits all perfectly match the original truth table.';
+    } else {
+        msgBox.className = 'verification fail';
+        msgBox.innerText = '✗ Verification Failed: Circuit outputs do not match the original truth table.';
+    }
 
-    const idHash = Math.random().toString(36).substring(7); // unique IDs for multi-render
-
-    let html = `
-        <div class="verification ${veriClass}">${veriText}</div>
-        <div class="grid-2">
-            <div class="result-box">
-                <h3>Minimized Expressions</h3>
-                <p><strong>SOP (Sum of Products):</strong> <span class="code-font">${sopEq}</span></p>
-                <p><strong>POS (Product of Sums):</strong> <span class="code-font">${posEq}</span></p>
-            </div>
-            <div class="result-box">
-                <h3>Truth Table</h3>
-                ${ttHtml}
-            </div>
-        </div>
-        
-        <h3>Logic Circuits</h3>
-        <div class="circuit-box">
-            <h4>Standard Circuit (AND, OR, NOT)</h4>
-            <div class="svg-container">${renderAST(astStandard)}</div>
-        </div>
-        <div class="circuit-box">
-            <h4>NAND-Only Circuit</h4>
-            <div class="svg-container">${renderAST(astNAND)}</div>
-        </div>
-        <div class="circuit-box">
-            <h4>NOR-Only Circuit</h4>
-            <div class="svg-container">${renderAST(astNOR)}</div>
-        </div>
-    `;
-    return html;
+    // Render SVGs
+    document.getElementById('svgStandard').innerHTML = renderAST(astStandard);
+    document.getElementById('svgNAND').innerHTML = renderAST(astNAND);
+    document.getElementById('svgNOR').innerHTML = renderAST(astNOR);
 }
 
 function bitsToLiterals(bits, vars, isSOP) {
@@ -360,8 +308,8 @@ function formatEquation(terms, isPOS) {
     return strings.join(outerJoin);
 }
 
-function generateTruthTableHTML(vars, tt) {
-    let html = '<div class="tt-container"><table><thead><tr>';
+function renderTruthTable(vars, tt) {
+    let html = '<table><thead><tr>';
     vars.forEach(v => html += `<th>${v}</th>`);
     html += '<th>Output</th></tr></thead><tbody>';
     
@@ -374,12 +322,12 @@ function generateTruthTableHTML(vars, tt) {
         let ttClass = tt[i] === 'X' ? 'tt-x' : (tt[i] ? 'tt-one' : 'tt-zero');
         html += `<td class="${ttClass}">${tt[i]}</td></tr>`;
     }
-    html += '</tbody></table></div>';
-    return html;
+    html += '</tbody></table>';
+    document.getElementById('ttOutputContainer').innerHTML = html;
 }
 
 // ------------------------------------------------------------------
-// AST Construction & Universal Gate Generation
+// AST Construction (Strict 2-Input Cascading)
 // ------------------------------------------------------------------
 
 function buildStandardAST(sopTerms) {
@@ -392,6 +340,7 @@ function buildStandardAST(sopTerms) {
             return { type: 'VAR', value: lit };
         });
         if (andNodes.length === 0) return { type: 'CONST', value: 1 };
+        // Force Strict 2-Input cascading logic
         return andNodes.reduce((acc, curr) => ({ type: 'AND', children: [acc, curr] }));
     });
     
@@ -416,6 +365,7 @@ function buildPOSStandardAST(posTerms) {
     return andNodes.reduce((acc, curr) => ({ type: 'AND', children: [acc, curr] }));
 }
 
+// Deep Equality helper for canceling double negations safely
 function astEquals(n1, n2) {
     if (n1 === n2) return true;
     if (!n1 || !n2 || n1.type !== n2.type || n1.value !== n2.value) return false;
@@ -423,10 +373,13 @@ function astEquals(n1, n2) {
     let len2 = n2.children ? n2.children.length : 0;
     if (len1 !== len2) return false;
     if (len1 === 0) return true;
-    for (let i = 0; i < len1; i++) if (!astEquals(n1.children[i], n2.children[i])) return false;
+    for (let i = 0; i < len1; i++) {
+        if (!astEquals(n1.children[i], n2.children[i])) return false;
+    }
     return true;
 }
 
+// Universal Gate Conversion (Automatically cancels double negations)
 function NOT_NAND(node) {
     if (node.type === 'NAND' && astEquals(node.children[0], node.children[1])) return node.children[0];
     return { type: 'NAND', children: [node, node] };
@@ -462,7 +415,8 @@ function evaluateAST(node, inputs) {
 
 function verifyASTs(vars, ttOriginal, astSOP, astNAND, astNOR) {
     for(let i=0; i<ttOriginal.length; i++) {
-        if (ttOriginal[i] === 'X') continue;
+        if (ttOriginal[i] === 'X') continue; // Skip verification for Don't Cares
+        
         let inputVals = {};
         for(let j=0; j<vars.length; j++) {
             inputVals[vars[j]] = (i & (1 << (vars.length - 1 - j))) ? 1 : 0;
@@ -476,13 +430,15 @@ function verifyASTs(vars, ttOriginal, astSOP, astNAND, astNOR) {
 }
 
 // ------------------------------------------------------------------
-// SVG ENGINE (2D Layouting)
+// SVG Rendering Engine
 // ------------------------------------------------------------------
 
 function cloneTree(node) {
     if (!node) return null;
     let clone = { type: node.type, value: node.value };
-    if (node.children) clone.children = node.children.map(cloneTree);
+    if (node.children) {
+        clone.children = node.children.map(c => cloneTree(c));
+    }
     return clone;
 }
 
@@ -496,7 +452,8 @@ function layoutNode(node) {
         totalH += dim.h;
         maxW = Math.max(maxW, dim.w);
     });
-    node.h = Math.max(totalH + (node.children.length - 1) * 25, 60);
+    let gap = 25; 
+    node.h = Math.max(totalH + (node.children.length - 1) * gap, 60);
     node.w = maxW + 110; 
     return {w: node.w, h: node.h};
 }
@@ -506,7 +463,8 @@ function positionNode(node, x, y) {
     if (!node.children || node.children.length === 0) return;
     
     let totalH = node.children.reduce((sum, c) => sum + c.h, 0);
-    let startY = y - (totalH + (node.children.length - 1) * 25) / 2;
+    let totalGap = (node.children.length - 1) * 25;
+    let startY = y - (totalH + totalGap) / 2;
     
     node.children.forEach(c => {
         let childY = startY + c.h / 2;
@@ -515,9 +473,32 @@ function positionNode(node, x, y) {
     });
 }
 
+function getGateInX(type, x) {
+    if (type === 'OR' || type === 'NOR') return x - 15; 
+    return x - 20; 
+}
+
+function getGateOutX(type, x) {
+    if (type === 'VAR' || type === 'CONST') return x + 20;
+    if (type === 'NOT') return x + 13;
+    if (type === 'AND' || type === 'OR') return x + 20;
+    if (type === 'NAND' || type === 'NOR') return x + 28;
+    return x;
+}
+
 function renderAST(originalNode) {
     let node = cloneTree(originalNode);
-    if(node.type === 'CONST') return `<svg width="200" height="60"><text x="100" y="35" text-anchor="middle" font-family="sans-serif">Output is constant ${node.value}</text></svg>`;
+    
+    // Draw an actual line output when evaluating to a solid 1 or 0
+    if(node.type === 'CONST') {
+        return `
+        <svg width="200" height="80" xmlns="http://www.w3.org/2000/svg">
+            <rect x="20" y="25" width="40" height="30" rx="4" fill="#f8fafc" stroke="#64748b" stroke-width="1.5"/>
+            <text x="40" y="45" font-family="monospace" font-size="15" font-weight="bold" fill="#0f172a" text-anchor="middle">${node.value}</text>
+            <path d="M 60,40 L 120,40" stroke="#0f172a" stroke-width="2" fill="none"/>
+            <text x="130" y="45" font-family="sans-serif" font-weight="bold" fill="#0f172a">Out</text>
+        </svg>`;
+    }
     
     layoutNode(node);
     positionNode(node, 0, 0); 
@@ -525,7 +506,7 @@ function renderAST(originalNode) {
     let bounds = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
     function calcBounds(n) {
         bounds.minX = Math.min(bounds.minX, n.x - 40);
-        bounds.maxX = Math.max(bounds.maxX, n.x + 60);
+        bounds.maxX = Math.max(bounds.maxX, n.x + 40);
         bounds.minY = Math.min(bounds.minY, n.y - 40);
         bounds.maxY = Math.max(bounds.maxY, n.y + 40);
         if(n.children) n.children.forEach(calcBounds);
@@ -542,17 +523,17 @@ function renderAST(originalNode) {
     }
     applyShift(node);
 
-    let svgWidth = (bounds.maxX - bounds.minX) + (padX * 2); 
+    let svgWidth = (bounds.maxX - bounds.minX) + (padX * 2) + 60; 
     let svgHeight = (bounds.maxY - bounds.minY) + (padY * 2);
 
-    let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg" style="user-select:none;">`;
+    // Removed the "max-width: 100%" inline CSS to prevent shrinking and enable scrolling
+    let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
     svg += drawConnections(node);
     svg += drawNodes(node);
     
-    let outX = node.type.includes('N') ? node.x + 28 : (node.type==='VAR' ? node.x+20 : node.x+20);
-    if(node.type === 'NOT') outX = node.x + 13;
-    svg += `<path d="M ${outX},${node.y} L ${outX + 30},${node.y}" stroke="#0f172a" stroke-width="2" fill="none"/>`;
-    svg += `<text x="${outX + 40}" y="${node.y + 5}" font-family="sans-serif" font-weight="bold" fill="#0f172a">Out</text>`;
+    let outPinX = getGateOutX(node.type, node.x);
+    svg += `<path d="M ${outPinX},${node.y} L ${outPinX + 30},${node.y}" stroke="#0f172a" stroke-width="2" fill="none"/>`;
+    svg += `<text x="${outPinX + 40}" y="${node.y + 5}" font-family="sans-serif" font-weight="bold" fill="#0f172a">Out</text>`;
     svg += `</svg>`;
     return svg;
 }
@@ -560,13 +541,14 @@ function renderAST(originalNode) {
 function drawConnections(node) {
     if (!node.children) return "";
     let svg = "";
+    let numChildren = node.children.length;
+
     node.children.forEach((c, idx) => {
-        let outX = c.type.includes('N') ? c.x+28 : (c.type==='VAR'||c.type==='CONST' ? c.x+20 : c.x+20);
-        if(c.type === 'NOT') outX = c.x + 13;
-        
-        let inX = (node.type === 'OR' || node.type === 'NOR') ? node.x - 15 : node.x - 20;
-        let spread = Math.min(24, (node.children.length - 1) * 12);
-        let step = node.children.length > 1 ? spread / (node.children.length - 1) : 0;
+        let outX = getGateOutX(c.type, c.x);
+        let inX = getGateInX(node.type, node.x);
+
+        let spread = Math.min(24, (numChildren - 1) * 12);
+        let step = numChildren > 1 ? spread / (numChildren - 1) : 0;
         let inY = (node.y - spread / 2) + (idx * step);
 
         let midX = outX + (inX - outX) / 2;
@@ -578,7 +560,9 @@ function drawConnections(node) {
 
 function drawNodes(node) {
     let svg = "";
-    if (node.children) node.children.forEach(c => { svg += drawNodes(c); });
+    if (node.children) {
+        node.children.forEach(c => { svg += drawNodes(c); });
+    }
     let nx = node.x, ny = node.y;
     
     if (node.type === 'VAR' || node.type === 'CONST') {
@@ -603,52 +587,4 @@ function drawNodes(node) {
         svg += `<text x="${nx}" y="${ny+3}" font-size="8.5" font-family="sans-serif" text-anchor="middle" font-weight="bold">NOR</text>`;
     }
     return svg;
-}
-
-// ------------------------------------------------------------------
-// ARITHMETIC PRE-CONFIGURATIONS
-// ------------------------------------------------------------------
-
-function getArithmeticConfig(type) {
-    if (type === 'ha') return [
-        { name: 'Half Adder (Sum)', vars: ['A','B'], tt: [0,1,1,0] },
-        { name: 'Half Adder (Carry)', vars: ['A','B'], tt: [0,0,0,1] }
-    ];
-    if (type === 'fa') return [
-        { name: 'Full Adder (Sum)', vars: ['A','B','Cin'], tt: [0,1,1,0,1,0,0,1] },
-        { name: 'Full Adder (Cout)', vars: ['A','B','Cin'], tt: [0,0,0,1,0,1,1,1] }
-    ];
-    if (type === 'hs') return [
-        { name: 'Half Subtractor (Diff)', vars: ['A','B'], tt: [0,1,1,0] },
-        { name: 'Half Subtractor (Bout)', vars: ['A','B'], tt: [0,1,0,0] }
-    ];
-    if (type === 'fs') return [
-        { name: 'Full Subtractor (Diff)', vars: ['A','B','Bin'], tt: [0,1,1,0,1,0,0,1] },
-        { name: 'Full Subtractor (Bout)', vars: ['A','B','Bin'], tt: [0,1,1,1,0,0,0,1] }
-    ];
-    if (type === 'mult2') return [
-        { name: '2x2 Multiplier (P3 / MSB)', vars: ['A1','A0','B1','B0'], tt: [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1] },
-        { name: '2x2 Multiplier (P2)', vars: ['A1','A0','B1','B0'], tt: [0,0,0,0, 0,0,0,0, 0,0,0,1, 0,0,1,0] },
-        { name: '2x2 Multiplier (P1)', vars: ['A1','A0','B1','B0'], tt: [0,0,0,0, 0,0,1,1, 0,0,1,1, 0,1,0,0] },
-        { name: '2x2 Multiplier (P0 / LSB)', vars: ['A1','A0','B1','B0'], tt: [0,0,0,0, 0,1,0,1, 0,0,0,0, 0,1,0,1] }
-    ];
-}
-
-function renderBlockDiagram(type) {
-    const div = document.createElement('div');
-    div.className = 'block-diagram';
-    let title = "", inputs = "", outputs = "";
-    
-    if(type === 'ha') { title = "Half Adder"; inputs = "<div class='block-pin in'>A</div><div class='block-pin in'>B</div>"; outputs = "<div class='block-pin out'>Sum</div><div class='block-pin out'>Carry</div>"; }
-    else if(type === 'fa') { title = "Full Adder"; inputs = "<div class='block-pin in'>A</div><div class='block-pin in'>B</div><div class='block-pin in'>Cin</div>"; outputs = "<div class='block-pin out'>Sum</div><div class='block-pin out'>Cout</div>"; }
-    else if(type === 'hs') { title = "Half Subtractor"; inputs = "<div class='block-pin in'>A</div><div class='block-pin in'>B</div>"; outputs = "<div class='block-pin out'>Diff</div><div class='block-pin out'>Bout</div>"; }
-    else if(type === 'fs') { title = "Full Subtractor"; inputs = "<div class='block-pin in'>A</div><div class='block-pin in'>B</div><div class='block-pin in'>Bin</div>"; outputs = "<div class='block-pin out'>Diff</div><div class='block-pin out'>Bout</div>"; }
-    else if(type === 'mult2') { title = "2x2 Multiplier"; inputs = "<div class='block-pin in'>A1, A0</div><div class='block-pin in'>B1, B0</div>"; outputs = "<div class='block-pin out'>P3 (MSB)</div><div class='block-pin out'>P2</div><div class='block-pin out'>P1</div><div class='block-pin out'>P0</div>"; }
-
-    div.innerHTML = `<div class="block-box">
-        <div class="block-inputs">${inputs}</div>
-        ${title}
-        <div class="block-outputs">${outputs}</div>
-    </div>`;
-    return div;
 }
