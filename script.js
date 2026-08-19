@@ -1,4 +1,4 @@
-console.log("Digital Logic Gate Implementation");
+console.log("Logic Synthesizer Engine V6: Bulletproof Loading");
 
 document.addEventListener('DOMContentLoaded', () => {
     // Tab switching logic
@@ -13,35 +13,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Truth Table Input Generator
-    document.getElementById('btnGenerateTTInputs').addEventListener('click', () => {
-        const varsStr = document.getElementById('inputVarsTT').value;
-        const vars = [...new Set(varsStr.toUpperCase().match(/[A-Z]/g) || [])].sort();
-        if (vars.length === 0 || vars.length > 6) {
-            alert("Please enter between 1 and 6 valid variables (A-Z).");
-            return;
-        }
-        
-        let html = '<table><thead><tr>';
-        vars.forEach(v => html += `<th>${v}</th>`);
-        html += '<th>Output</th></tr></thead><tbody>';
-        
-        const rows = Math.pow(2, vars.length);
-        for(let i=0; i<rows; i++) {
-            html += '<tr>';
-            for(let j=0; j<vars.length; j++) {
-                let val = (i & (1 << (vars.length - 1 - j))) ? 1 : 0;
-                html += `<td>${val}</td>`;
+    const btnGenerate = document.getElementById('btnGenerateTTInputs');
+    if (btnGenerate) {
+        btnGenerate.addEventListener('click', () => {
+            const varsStr = document.getElementById('inputVarsTT').value;
+            const vars = [...new Set(varsStr.toUpperCase().match(/[A-Z]/g) || [])].sort();
+            if (vars.length === 0 || vars.length > 6) {
+                alert("Please enter between 1 and 6 valid variables (A-Z).");
+                return;
             }
-            // Includes the Don't Care ('X') option
-            html += `<td><select id="tt-out-${i}"><option value="0">0</option><option value="1">1</option><option value="X">X</option></select></td></tr>`;
-        }
-        html += '</tbody></table>';
-        document.getElementById('ttInputContainer').innerHTML = html;
-        document.getElementById('ttInputContainer').dataset.vars = vars.join(',');
-    });
+            
+            let html = '<table><thead><tr>';
+            vars.forEach(v => html += `<th>${v}</th>`);
+            html += '<th>Output</th></tr></thead><tbody>';
+            
+            const rows = Math.pow(2, vars.length);
+            for(let i=0; i<rows; i++) {
+                html += '<tr>';
+                for(let j=0; j<vars.length; j++) {
+                    let val = (i & (1 << (vars.length - 1 - j))) ? 1 : 0;
+                    html += `<td>${val}</td>`;
+                }
+                html += `<td><select id="tt-out-${i}"><option value="0">0</option><option value="1">1</option><option value="X">X</option></select></td></tr>`;
+            }
+            html += '</tbody></table>';
+            document.getElementById('ttInputContainer').innerHTML = html;
+            document.getElementById('ttInputContainer').dataset.vars = vars.join(',');
+        });
+    }
 
     // Main Synthesize Button
-    document.getElementById('btnSynthesize').addEventListener('click', processInput);
+    const btnSynthesize = document.getElementById('btnSynthesize');
+    if (btnSynthesize) {
+        btnSynthesize.addEventListener('click', processInput);
+    } else {
+        console.error("CRITICAL ERROR: Synthesize button not found in HTML!");
+    }
 });
 
 function processInput() {
@@ -59,7 +66,6 @@ function processInput() {
             const expr = document.getElementById('inputExpr').value;
             if(!expr.trim()) throw new Error("Expression cannot be empty.");
             
-            // Clean out logic words before extracting variables so words like "AND" aren't parsed as A, N, D
             let cleanExpr = expr.toUpperCase().replace(/(AND|OR|NOT|NAND|NOR|XOR|XNOR)/g, '');
             vars = [...new Set(cleanExpr.match(/[A-Z]/g) || [])].sort();
             
@@ -82,7 +88,6 @@ function processInput() {
             
             const minterms = document.getElementById('inputMinterms').value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
             
-            // Parse Don't Cares
             const dontCaresStr = document.getElementById('inputDontCares') ? document.getElementById('inputDontCares').value : '';
             const dontCares = dontCaresStr.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
             
@@ -112,38 +117,18 @@ function processInput() {
     }
 }
 
-// ------------------------------------------------------------------
-// Core Logic & Evaluation (Robust parser for implicit logic)
-// ------------------------------------------------------------------
-
 function evaluateExpression(expr, inputs) {
     let norm = expr.toUpperCase();
-    
-    // Convert text operators to symbols first
-    norm = norm.replace(/XOR/g, '^')
-               .replace(/AND/g, '&')
-               .replace(/OR/g, '|')
-               .replace(/NOT/g, '~');
-    
-    // Remove spaces and map alternate symbols
-    norm = norm.replace(/\s+/g, '')
-               .replace(/\*/g, '&')
-               .replace(/\+/g, '|')
-               .replace(/!/g, '~');
-
-    // Convert postfix NOT (e.g., A') to prefix (~A)
+    norm = norm.replace(/XOR/g, '^').replace(/AND/g, '&').replace(/OR/g, '|').replace(/NOT/g, '~');
+    norm = norm.replace(/\s+/g, '').replace(/\*/g, '&').replace(/\+/g, '|').replace(/!/g, '~');
     norm = norm.replace(/([A-Z])'/g, '~$1');
-
-    // Inject implicit ANDs between adjacent variables/parentheses (e.g. AB -> A&B)
     norm = norm.replace(/([A-Z\)])(?=[A-Z\(~])/g, '$1&');
 
-    // Replace variables with their binary values
     Object.keys(inputs).forEach(v => {
         let regex = new RegExp(v, 'g');
         norm = norm.replace(regex, inputs[v]);
     });
 
-    // Convert boolean logic operators to JS evaluation operators
     let jsExpr = norm.replace(/&/g, '&&').replace(/\|/g, '||').replace(/~/g, '!');
     
     try {
@@ -154,14 +139,9 @@ function evaluateExpression(expr, inputs) {
     }
 }
 
-// ------------------------------------------------------------------
-// Quine-McCluskey Minimization (Supporting Don't Cares)
-// ------------------------------------------------------------------
-
 function quineMcCluskey(minterms, dontCares, numVars) {
     if (minterms.length === 0) return [];
     
-    // Merge minterms and don't cares to find larger groupings
     let allTerms = [...new Set([...minterms, ...dontCares])];
     if (allTerms.length === Math.pow(2, numVars)) return ['1'];
 
@@ -211,7 +191,6 @@ function quineMcCluskey(minterms, dontCares, numVars) {
         groups = nextGroups;
     }
 
-    // Uncovered set ONLY includes actual minterms (we don't strictly care about covering 'X's)
     let uncovered = new Set(minterms); 
     let essential = [];
 
@@ -234,15 +213,12 @@ function quineMcCluskey(minterms, dontCares, numVars) {
             let coverCount = pi.minterms.filter(m => uncovered.has(m)).length;
             if (coverCount > maxCover) { maxCover = coverCount; bestPI = pi; }
         });
+        if (!bestPI) break; // Defensive guard to prevent infinite loops
         solution.push(bestPI);
         bestPI.minterms.forEach(m => uncovered.delete(m));
     }
     return solution.map(pi => pi.bits);
 }
-
-// ------------------------------------------------------------------
-// Synthesis Pipeline
-// ------------------------------------------------------------------
 
 function runSynthesis(vars, tt) {
     const minterms1 = tt.map((v, i) => v === 1 ? i : -1).filter(i => i !== -1);
@@ -260,26 +236,22 @@ function runSynthesis(vars, tt) {
     
     renderTruthTable(vars, tt);
 
-    // Build Strict 2-Input ASTs
     const astStandard = buildStandardAST(sopTerms);
     const astStandardPOS = buildPOSStandardAST(posTerms);
     
-    // Convert logic to universal gates
     const astNAND = convertToNAND(astStandard);
     const astNOR = convertToNOR(astStandardPOS);
 
-    // Verify Outputs
     const verified = verifyASTs(vars, tt, astStandard, astNAND, astNOR);
     const msgBox = document.getElementById('verificationMsg');
     if (verified) {
         msgBox.className = 'verification success';
-        msgBox.innerText = '✓ Verification Passed: Simplified, NAND-only, and NOR-only circuits all perfectly match the original truth table.';
+        msgBox.innerText = '✓ Verification Passed: Simplified, NAND-only, and NOR-only circuits perfectly match the original truth table.';
     } else {
         msgBox.className = 'verification fail';
         msgBox.innerText = '✗ Verification Failed: Circuit outputs do not match the original truth table.';
     }
 
-    // Render SVGs
     document.getElementById('svgStandard').innerHTML = renderAST(astStandard);
     document.getElementById('svgNAND').innerHTML = renderAST(astNAND);
     document.getElementById('svgNOR').innerHTML = renderAST(astNOR);
@@ -326,10 +298,6 @@ function renderTruthTable(vars, tt) {
     document.getElementById('ttOutputContainer').innerHTML = html;
 }
 
-// ------------------------------------------------------------------
-// AST Construction (Strict 2-Input Cascading)
-// ------------------------------------------------------------------
-
 function buildStandardAST(sopTerms) {
     if (sopTerms.length === 0) return { type: 'CONST', value: 0 };
     if (sopTerms[0][0] === '1') return { type: 'CONST', value: 1 };
@@ -340,7 +308,6 @@ function buildStandardAST(sopTerms) {
             return { type: 'VAR', value: lit };
         });
         if (andNodes.length === 0) return { type: 'CONST', value: 1 };
-        // Force Strict 2-Input cascading logic
         return andNodes.reduce((acc, curr) => ({ type: 'AND', children: [acc, curr] }));
     });
     
@@ -365,7 +332,6 @@ function buildPOSStandardAST(posTerms) {
     return andNodes.reduce((acc, curr) => ({ type: 'AND', children: [acc, curr] }));
 }
 
-// Deep Equality helper for canceling double negations safely
 function astEquals(n1, n2) {
     if (n1 === n2) return true;
     if (!n1 || !n2 || n1.type !== n2.type || n1.value !== n2.value) return false;
@@ -379,7 +345,6 @@ function astEquals(n1, n2) {
     return true;
 }
 
-// Universal Gate Conversion (Automatically cancels double negations)
 function NOT_NAND(node) {
     if (node.type === 'NAND' && astEquals(node.children[0], node.children[1])) return node.children[0];
     return { type: 'NAND', children: [node, node] };
@@ -415,8 +380,7 @@ function evaluateAST(node, inputs) {
 
 function verifyASTs(vars, ttOriginal, astSOP, astNAND, astNOR) {
     for(let i=0; i<ttOriginal.length; i++) {
-        if (ttOriginal[i] === 'X') continue; // Skip verification for Don't Cares
-        
+        if (ttOriginal[i] === 'X') continue;
         let inputVals = {};
         for(let j=0; j<vars.length; j++) {
             inputVals[vars[j]] = (i & (1 << (vars.length - 1 - j))) ? 1 : 0;
@@ -428,10 +392,6 @@ function verifyASTs(vars, ttOriginal, astSOP, astNAND, astNOR) {
     }
     return true;
 }
-
-// ------------------------------------------------------------------
-// SVG Rendering Engine
-// ------------------------------------------------------------------
 
 function cloneTree(node) {
     if (!node) return null;
@@ -489,7 +449,6 @@ function getGateOutX(type, x) {
 function renderAST(originalNode) {
     let node = cloneTree(originalNode);
     
-    // Draw an actual line output when evaluating to a solid 1 or 0
     if(node.type === 'CONST') {
         return `
         <svg width="200" height="80" xmlns="http://www.w3.org/2000/svg">
@@ -526,7 +485,6 @@ function renderAST(originalNode) {
     let svgWidth = (bounds.maxX - bounds.minX) + (padX * 2) + 60; 
     let svgHeight = (bounds.maxY - bounds.minY) + (padY * 2);
 
-    // Removed the "max-width: 100%" inline CSS to prevent shrinking and enable scrolling
     let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
     svg += drawConnections(node);
     svg += drawNodes(node);
