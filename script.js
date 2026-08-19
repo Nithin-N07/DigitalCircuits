@@ -61,8 +61,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Scroll to Top Behavior
     const scrollTopBtn = document.getElementById("scrollTopBtn");
-    window.onscroll = () => { scrollTopBtn.style.display = window.scrollY > 300 ? "block" : "none"; };
-    scrollTopBtn.onclick = () => { window.scrollTo({top: 0, behavior: 'smooth'}); };
+    if (scrollTopBtn) {
+        window.onscroll = () => { scrollTopBtn.style.display = window.scrollY > 300 ? "block" : "none"; };
+        scrollTopBtn.onclick = () => { window.scrollTo({top: 0, behavior: 'smooth'}); };
+    }
 });
 
 
@@ -82,11 +84,16 @@ function processInput() {
 
         if (activeTab === 'tab-expr') {
             const expr = document.getElementById('inputExpr').value;
-            const exprDC = document.getElementById('inputExprDC').value;
+            const dcElement = document.getElementById('inputExprDC');
+            const exprDC = dcElement ? dcElement.value : ''; // Safely check if DC box exists
+            
             if(!expr.trim()) throw new Error("Expression cannot be empty.");
             
-            let allVars = (expr + " " + exprDC).toUpperCase().match(/[A-Z]/g) || [];
+            // Clean out logic words so "AND" doesn't become variables A, N, D
+            let cleanExpr = (expr + " " + exprDC).toUpperCase().replace(/(AND|OR|NOT|NAND|NOR|XOR|XNOR)/g, '');
+            let allVars = cleanExpr.match(/[A-Z]/g) || [];
             const vars = [...new Set(allVars)].sort();
+            
             if(vars.length > 6) throw new Error("Maximum 6 variables supported.");
             if(vars.length === 0) throw new Error("No valid variables found.");
             
@@ -176,7 +183,6 @@ function evaluateExpression(expr, inputs) {
     let jsExpr = norm.replace(/&/g, '&&').replace(/\|/g, '||').replace(/~/g, '!');
     
     // Handle XOR strictly manually by replacing A ^ B with A !== B
-    // Simple RegEx won't fix nested XOR properly in JS without AST, but for binary strings:
     jsExpr = jsExpr.replace(/([01!&|()]+)\^([01!&|()]+)/g, '!!($1) !== !!($2)'); 
 
     try {
@@ -303,8 +309,6 @@ function runSynthesis(vars, tt) {
     const veriClass = verified ? 'success' : 'fail';
     const veriText = verified ? '✓ Verification Passed: Simplified, NAND-only, and NOR-only circuits all perfectly match the original truth table.' 
                               : '✗ Verification Failed: Circuit outputs mismatch.';
-
-    const idHash = Math.random().toString(36).substring(7); // unique IDs for multi-render
 
     let html = `
         <div class="verification ${veriClass}">${veriText}</div>
@@ -517,7 +521,17 @@ function positionNode(node, x, y) {
 
 function renderAST(originalNode) {
     let node = cloneTree(originalNode);
-    if(node.type === 'CONST') return `<svg width="200" height="60"><text x="100" y="35" text-anchor="middle" font-family="sans-serif">Output is constant ${node.value}</text></svg>`;
+    
+    // Corrected CONST rendering block (restored visual lines instead of text)
+    if(node.type === 'CONST') {
+        return `
+        <svg width="200" height="80" xmlns="http://www.w3.org/2000/svg" style="user-select:none;">
+            <rect x="20" y="25" width="40" height="30" rx="4" fill="#f8fafc" stroke="#64748b" stroke-width="1.5"/>
+            <text x="40" y="45" font-family="monospace" font-size="15" font-weight="bold" fill="#0f172a" text-anchor="middle">${node.value}</text>
+            <path d="M 60,40 L 120,40" stroke="#0f172a" stroke-width="2" fill="none"/>
+            <text x="130" y="45" font-family="sans-serif" font-weight="bold" fill="#0f172a">Out</text>
+        </svg>`;
+    }
     
     layoutNode(node);
     positionNode(node, 0, 0); 
